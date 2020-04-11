@@ -7,10 +7,11 @@ class Transaction {
         this.fromAddress = fromAddress;
         this.toAddress = toAddress;
         this.amount = amount;
+        this.timestamp = Date.now();
     }
 
     calculateHash() {
-        return SHA256(this.fromAddress + this.toAddress + this.amount).toString();
+        return SHA256(this.fromAddress + this.toAddress + this.amount + this.timestamp).toString();
     }
 
     signTransaction(signingKey) {
@@ -40,25 +41,25 @@ class Block {
         this.previousHash = previousHash;
         this.timestamp = timestamp;
         this.transactions = transactions;
-        this.hash = this.calculateHash();
         this.nonce = 0;
+        this.hash = this.calculateHash();
     }
 
     calculateHash() {
-        return SHA256(this.index + this.previousHash + this.timestamp + JSON.stringify(this.data) + this.nonce).toString();
+        return SHA256(this.previousHash + this.timestamp + JSON.stringify(this.transactions) + this.nonce).toString();
     }
 
     mineBlock(difficulty) {
-        console.log("this.hash.substring(0, difficulty): " + this.hash.substring(0, difficulty));
-        console.log("Array(difficulty + 1): " + Array(difficulty + 1));
-        console.log("Array(difficulty + 1).join('0'): " + Array(difficulty + 1).join("0"));
+        // console.log("this.hash.substring(0, difficulty): " + this.hash.substring(0, difficulty));
+        // console.log("Array(difficulty + 1): " + Array(difficulty + 1));
+        // console.log("Array(difficulty + 1).join('0'): " + Array(difficulty + 1).join("0"));
 
-        while (this.hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+        while (this.hash.substring(0, difficulty) !== Array(difficulty + 1).join('0')) {
             this.nonce++;
             this.hash = this.calculateHash();
         }
 
-        console.log("Block mined: " + this.hash);
+        console.log(`Block mined: ${this.hash}`);
     }
 
 
@@ -78,7 +79,7 @@ class Blockchain {
         this.chain = [this.createGenesisBlock()];
         this.difficulty = 2;
         this.pendingTransactions = [];
-        this.blockReward = 100;
+        this.miningReward = 100;
     }
 
     createGenesisBlock() {
@@ -97,19 +98,16 @@ class Blockchain {
     }
 
     minePendingTransactions(miningRewardAddress) {
-        // console.log("miningRewardAddress", miningRewardAddress);
-        let block = new Block(Date.now(), this.pendingTransactions);
+        const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
+        this.pendingTransactions.push(rewardTx);
+
+        let block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);
         block.mineBlock(this.difficulty);
 
         console.log('Block successfully mined!');
         this.chain.push(block);
-        // console.log('block', block);
 
-        this.pendingTransactions = [
-            new Transaction(null, miningRewardAddress, this.blockReward)
-        ];
-
-        // console.log('this.pendingTransactions', this.pendingTransactions);
+        this.pendingTransactions = [];
     }
 
     addTransaction(transaction) {
@@ -129,7 +127,7 @@ class Blockchain {
         // console.log(address);
         let balance = 0;
 
-        console.log("this.chain", this.chain);
+        // console.log("this.chain", this.chain);
         for (const block of this.chain) {
             // console.log("block.transaction", block.transactions);
             for (const trans of block.transactions) {
@@ -143,31 +141,51 @@ class Blockchain {
             }
         }
 
-        console.log("balance", balance);
+        // console.log("balance", balance);
         return balance;
     }
 
+    getAllTransactionsForWallet(address) {
+        const txs = [];
+
+        for (const block of this.chain) {
+            for (const tx of block.transactions) {
+            if (tx.fromAddress === address || tx.toAddress === address) {
+                txs.push(tx);
+            }
+            }
+        }
+
+        return txs;
+    }
+
     isChainValid() {
+        // Check if the Genesis block hasn't been tampered with by comparing
+        // the output of createGenesisBlock with the first block on our chain
+        const realGenesis = JSON.stringify(this.createGenesisBlock());
+
+        if (realGenesis !== JSON.stringify(this.chain[0])) {
+            return false;
+        }
+
+        // Check the remaining blocks on the chain to see if there hashes and
+        // signatures are correct
         for (let i = 1; i < this.chain.length; i++) {
             const currentBlock = this.chain[i];
-            const previousBlock = this.chain[i - 1];
 
             if (!currentBlock.hasValidTransactions()) {
-                return false;
+            return false;
             }
 
             if (currentBlock.hash !== currentBlock.calculateHash()) {
-                return false;
+            return false;
             }
-
-            // if (currentBlock.previousHash !== previousBlock.hash) {
-            //     return false;
-            // }
-
-            return true;
         }
+
+        return true;
     }
 }
 
 module.exports.Blockchain = Blockchain;
+module.exports.Block = Block;
 module.exports.Transaction = Transaction;
